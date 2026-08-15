@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator, ScrollView, Dimensions, TextInput, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, ActivityIndicator, ScrollView, Dimensions, TextInput, TouchableOpacity, Alert } from 'react-native';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Slider from '@react-native-community/slider';
+import { useAgenda } from './AgendaContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -16,15 +17,58 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [places, setPlaces] = useState<any[]>([]);
   const [mode, setMode] = useState<'chill' | 'culture'>('chill');
-  const [schedule, setSchedule] = useState<{id: string, time: string, title: string}[]>([]);
-  const [newTime, setNewTime] = useState('');
-  const [newTitle, setNewTitle] = useState('');
+  const { items } = useAgenda();
 
-  const addSchedule = () => {
-    if (newTime && newTitle) {
-      setSchedule([...schedule, { id: Date.now().toString(), time: newTime, title: newTitle }]);
-      setNewTime('');
-      setNewTitle('');
+  const generateItinerary = async () => {
+    if (!location || places.length === 0) {
+      Alert.alert("Erreur", "Localisation ou lieux indisponibles.");
+      return;
+    }
+    
+    try {
+      const destination = places[0]; // Pick the best recommended place
+      const originStr = `${location.coords.latitude},${location.coords.longitude}`;
+      const destStr = `${destination.lat},${destination.lon}`;
+
+      // Check transit
+      const transitUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destStr}&mode=transit&key=${GOOGLE_API_KEY}`;
+      const transitRes = await fetch(transitUrl);
+      const transitData = await transitRes.json();
+      
+      // Check walking
+      const walkUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destStr}&mode=walking&key=${GOOGLE_API_KEY}`;
+      const walkRes = await fetch(walkUrl);
+      const walkData = await walkRes.json();
+
+      let transitTime = 999999;
+      let walkTime = 999999;
+      let transitText = "";
+      let walkText = "";
+
+      if (transitData.routes && transitData.routes.length > 0) {
+        transitTime = transitData.routes[0].legs[0].duration.value;
+        transitText = transitData.routes[0].legs[0].duration.text;
+      }
+      
+      if (walkData.routes && walkData.routes.length > 0) {
+        walkTime = walkData.routes[0].legs[0].duration.value;
+        walkText = walkData.routes[0].legs[0].duration.text;
+      }
+
+      let bestMode = walkTime < transitTime ? "à pied 🚶" : "en transports 🚇";
+      let bestTime = walkTime < transitTime ? walkText : transitText;
+
+      const todayEvents = items['2026-08-17'] || [];
+      const nextEvent = todayEvents.length > 0 ? todayEvents[0] : null;
+      let nextEventText = nextEvent ? `${nextEvent.time} - ${nextEvent.name}` : 'Aucun (quartier libre !)';
+
+      Alert.alert(
+        "Itinéraire Optimisé ✨",
+        `Prochain événement : ${nextEventText}\n\nLieu recommandé :\n${destination.name}\n\nMeilleur trajet depuis ta position :\n${bestTime} ${bestMode}`,
+        [{ text: "C'est parti !" }]
+      );
+    } catch (e) {
+      Alert.alert("Erreur", "Impossible de contacter Google Directions.");
     }
   };
 
@@ -38,11 +82,6 @@ export default function Dashboard() {
       }
 
       let loc = await Location.getCurrentPositionAsync({});
-      // If we are not in London, mock the location to Central London for the demo
-      if (loc.coords.latitude < 50 || loc.coords.latitude > 53) {
-         loc.coords.latitude = 51.5074;
-         loc.coords.longitude = -0.1278;
-      }
       setLocation(loc);
 
       // Get Battery
@@ -130,6 +169,7 @@ export default function Dashboard() {
         {location ? (
           <MapView 
             style={styles.map}
+            provider={PROVIDER_GOOGLE}
             initialRegion={{
               latitude: location.coords.latitude,
               longitude: location.coords.longitude,
@@ -207,46 +247,32 @@ export default function Dashboard() {
             <Text style={styles.noPlacesText}>Rien d'adapté à ta fatigue actuelle ! Repose-toi.</Text>
           )}
         </ScrollView>
-        </ScrollView>
 
-        {/* Emploi du temps manuel */}
-        <Text style={styles.sectionTitle}>Mon Emploi du Temps :</Text>
-        <View style={styles.scheduleInputContainer}>
-          <TextInput 
-            style={[styles.input, { flex: 1 }]} 
-            placeholder="Ex: 14:00" 
-            placeholderTextColor="#8E8E93"
-            value={newTime}
-            onChangeText={setNewTime}
-          />
-          <TextInput 
-            style={[styles.input, { flex: 2, marginLeft: 8 }]} 
-            placeholder="Ex: Cours d'anglais" 
-            placeholderTextColor="#8E8E93"
-            value={newTitle}
-            onChangeText={setNewTitle}
-          />
-          <TouchableOpacity style={styles.addButton} onPress={addSchedule}>
-            <Text style={styles.addButtonText}>+</Text>
-          </TouchableOpacity>
-        </View>
-
-        {schedule.length > 0 ? (
-          schedule.map(item => (
-            <View key={item.id} style={styles.scheduleItem}>
-              <Text style={styles.scheduleTime}>{item.time}</Text>
-              <Text style={styles.scheduleTitle}>{item.title}</Text>
-            </View>
-          ))
-        ) : (
-          <Text style={styles.noPlacesText}>Aucune heure ajoutée.</Text>
-        )}
+        <TouchableOpacity style={styles.generateButton} onPress={generateItinerary}>
+          <Text style={styles.generateButtonText}>✨ Calculer mon itinéraire</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  generateButton: {
+    backgroundColor: '#34C759',
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#34C759',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  generateButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   container: {
     flex: 1,
     backgroundColor: '#0A0A0A', // Dark mode background
