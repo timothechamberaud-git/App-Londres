@@ -8,7 +8,10 @@
     "scheme": "londonstudentguide",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "config": {
+        "googleMapsApiKey": "AIzaSyBrdGlIPMDuHEnm61ddhQdWMhXRkDG5FuM"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -16,6 +19,11 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBrdGlIPMDuHEnm61ddhQdWMhXRkDG5FuM"
+        }
       },
       "predictiveBackGestureEnabled": false
     },
