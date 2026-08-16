@@ -1,4 +1,5 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type Event = {
   name: string;
@@ -17,18 +18,39 @@ interface AgendaContextType {
 const AgendaContext = createContext<AgendaContextType | undefined>(undefined);
 
 export function AgendaProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<AgendaItems>({
-    '2026-08-16': [{ name: 'Arrivée à Londres', time: '14:00' }],
-    '2026-08-17': [{ name: 'Cours d\'anglais', time: '09:00' }]
-  });
+  const [items, setItems] = useState<AgendaItems>({});
 
-  const addEvent = (date: string, time: string, name: string) => {
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const jsonValue = await AsyncStorage.getItem('@agenda_items');
+        if (jsonValue != null) {
+          setItems(JSON.parse(jsonValue));
+        } else {
+          setItems({
+            '2026-08-16': [{ name: 'Arrivée à Londres (Demo)', time: '14:00' }]
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load agenda items', e);
+      }
+    };
+    loadData();
+  }, []);
+
+  const addEvent = async (date: string, time: string, name: string) => {
     setItems(prev => {
       const current = prev[date] || [];
       const updated = [...current, { name, time }];
-      // Sort by time
       updated.sort((a, b) => a.time.localeCompare(b.time));
-      return { ...prev, [date]: updated };
+      
+      const newItems = { ...prev, [date]: updated };
+      
+      AsyncStorage.setItem('@agenda_items', JSON.stringify(newItems)).catch(e => {
+        console.error('Failed to save agenda items', e);
+      });
+      
+      return newItems;
     });
   };
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, ScrollView, TextInput } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAgenda } from './AgendaContext';
 
 const agendaTheme = {
@@ -23,6 +24,18 @@ export default function AgendaScreen() {
   const [selectedDate, setSelectedDate] = useState('2026-08-17');
   const [newTime, setNewTime] = useState('');
   const [newTitle, setNewTitle] = useState('');
+  const [showPicker, setShowPicker] = useState(false);
+  const [timeDate, setTimeDate] = useState(new Date());
+
+  const handleTimeChange = (event: any, selectedDate?: Date) => {
+    setShowPicker(false);
+    if (selectedDate) {
+      setTimeDate(selectedDate);
+      const hours = selectedDate.getHours().toString().padStart(2, '0');
+      const mins = selectedDate.getMinutes().toString().padStart(2, '0');
+      setNewTime(`${hours}:${mins}`);
+    }
+  };
 
   const handleAddEvent = () => {
     if (newTime && newTitle) {
@@ -54,13 +67,20 @@ export default function AgendaScreen() {
       />
 
       <View style={styles.addEventContainer}>
-        <TextInput 
-          style={[styles.input, { flex: 1 }]} 
-          placeholder="Heure (ex: 14:00)" 
-          placeholderTextColor="#8E8E93"
-          value={newTime}
-          onChangeText={setNewTime}
-        />
+        <TouchableOpacity style={[styles.input, { flex: 1, justifyContent: 'center' }]} onPress={() => setShowPicker(true)}>
+          <Text style={{ color: newTime ? '#FFF' : '#8E8E93', fontSize: 14 }}>
+            {newTime || "Heure"}
+          </Text>
+        </TouchableOpacity>
+        {showPicker && (
+          <DateTimePicker
+            value={timeDate}
+            mode="time"
+            is24Hour={true}
+            display="default"
+            onChange={handleTimeChange}
+          />
+        )}
         <TextInput 
           style={[styles.input, { flex: 2, marginLeft: 8 }]} 
           placeholder="Titre de l'événement" 
