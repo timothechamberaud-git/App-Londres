@@ -22,10 +22,10 @@ export default function Dashboard() {
   const [aiModalVisible, setAiModalVisible] = useState(false);
   const [aiResponse, setAiResponse] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
-  const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
+  const [routeSegments, setRouteSegments] = useState<any[]>([]);
   const [routeMode, setRouteMode] = useState<'WALK' | 'TRANSIT'>('WALK');
   const [morningBriefing, setMorningBriefing] = useState<string | null>(null);
-  const [morningPolyline, setMorningPolyline] = useState<string | null>(null);
+  const [morningSegments, setMorningSegments] = useState<any[]>([]);
   const hasRunBriefing = React.useRef(false);
   const { items } = useAgenda();
   
@@ -57,6 +57,40 @@ export default function Dashboard() {
     return points;
   };
   
+  const parseRouteSegments = (routeData: any) => {
+    let segments: any[] = [];
+    let instructions: string[] = [];
+    if (!routeData.routes || routeData.routes.length === 0 || !routeData.routes[0].legs) return { segments, instructions };
+    
+    const steps = routeData.routes[0].legs[0].steps || [];
+    steps.forEach((step: any) => {
+      const mode = step.travelMode;
+      let color = mode === 'TRANSIT' ? '#007AFF' : '#FF9500';
+      let lineName = '';
+      
+      if (mode === 'TRANSIT' && step.transitDetails && step.transitDetails.transitLine) {
+        if (step.transitDetails.transitLine.color) {
+          color = step.transitDetails.transitLine.color;
+        }
+        if (step.transitDetails.transitLine.name) {
+          lineName = step.transitDetails.transitLine.name;
+          instructions.push(`Ligne ${lineName}`);
+        }
+      }
+      
+      if (step.polyline && step.polyline.encodedPolyline) {
+        segments.push({
+          points: decodePolyline(step.polyline.encodedPolyline),
+          mode,
+          color,
+          lineName
+        });
+      }
+    });
+    
+    return { segments, instructions };
+  };
+
   // Clé API Gemini (L'utilisateur a fourni cette clé, bien qu'elle ne commence pas par AIzaSy)
   const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 
@@ -90,7 +124,7 @@ export default function Dashboard() {
           headers: {
             'Content-Type': 'application/json',
             'X-Goog-Api-Key': GOOGLE_API_KEY,
-            'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'
+            'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.travelMode,routes.legs.steps.transitDetails.transitLine.name,routes.legs.steps.transitDetails.transitLine.color'
           },
           body: JSON.stringify({
             origin: originBody,
@@ -132,11 +166,15 @@ export default function Dashboard() {
       let bestRouteData = walkTime <= transitTime ? walkData : transitData;
       setRouteMode(walkTime <= transitTime ? 'WALK' : 'TRANSIT');
       
-      if (bestRouteData.routes && bestRouteData.routes.length > 0 && bestRouteData.routes[0].polyline) {
-        const encoded = bestRouteData.routes[0].polyline.encodedPolyline;
-        setRouteCoordinates(decodePolyline(encoded));
+      let transitInstructions = "";
+      if (bestRouteData.routes && bestRouteData.routes.length > 0) {
+        const { segments, instructions } = parseRouteSegments(bestRouteData);
+        setRouteSegments(segments);
+        if (instructions.length > 0) {
+           transitInstructions = ` (Détail : ${instructions.join(', ')})`;
+        }
       } else {
-        setRouteCoordinates([]);
+        setRouteSegments([]);
       }
 
       const todayEvents = items['2026-08-17'] || [];
@@ -173,7 +211,7 @@ Voici ma situation actuelle :
 - Je recherche une ambiance : ${vibe === 'secret' ? 'Lieu secret / local' : 'Touristique / populaire'}.
 - Le lieu que l'algorithme a trouvé pour moi est : ${destination.name} (${destination.type}).
 - Météo actuelle à Londres : ${weatherText}.
-- Temps de trajet estimé pour y aller : ${bestTime} ${bestModeText}.
+- Temps de trajet estimé pour y aller : ${bestTime} ${bestModeText}${transitInstructions}.
 - Mon prochain impératif dans mon agenda est : ${nextEventText}.
 
 Ta mission :
@@ -266,7 +304,7 @@ Fais court, punchy, et utilise des emojis !`;
             headers: {
               'Content-Type': 'application/json',
               'X-Goog-Api-Key': GOOGLE_API_KEY,
-              'X-Goog-FieldMask': 'routes.duration,routes.polyline.encodedPolyline'
+              'X-Goog-FieldMask': 'routes.duration,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.travelMode,routes.legs.steps.transitDetails.transitLine.name,routes.legs.steps.transitDetails.transitLine.color'
             },
             body: JSON.stringify({ origin: originBody, destination: destBody, travelMode: 'TRANSIT' })
           });
@@ -275,22 +313,23 @@ Fais court, punchy, et utilise des emojis !`;
           let transitSeconds = 0;
           if (data.routes && data.routes.length > 0 && data.routes[0].duration) {
              transitSeconds = parseInt(data.routes[0].duration.replace('s', ''), 10);
-             if (data.routes[0].polyline) {
-               setMorningPolyline(data.routes[0].polyline.encodedPolyline);
-             }
+             
+             const { segments, instructions } = parseRouteSegments(data);
+             setMorningSegments(segments);
+             let transitInfo = instructions.length > 0 ? ` (${instructions.join(', ')})` : '';
+             
+             const totalSeconds = transitSeconds + 300; // + 5 min marge
+             
+             const [hours, minutes] = firstEvent.time.split(':').map(Number);
+             const eventDate = new Date();
+             eventDate.setHours(hours, minutes, 0, 0);
+             
+             const departureDate = new Date(eventDate.getTime() - totalSeconds * 1000);
+             const depHours = departureDate.getHours().toString().padStart(2, '0');
+             const depMins = departureDate.getMinutes().toString().padStart(2, '0');
+             
+             setMorningBriefing(`Ton cours "${firstEvent.name}" est à ${firstEvent.time}.\nTrajet: ${Math.round(transitSeconds / 60)} min${transitInfo}. Pars à ${depHours}:${depMins} !`);
           }
-          
-          const totalSeconds = transitSeconds + 300; // + 5 min marge
-          
-          const [hours, minutes] = firstEvent.time.split(':').map(Number);
-          const eventDate = new Date();
-          eventDate.setHours(hours, minutes, 0, 0);
-          
-          const departureDate = new Date(eventDate.getTime() - totalSeconds * 1000);
-          const depHours = departureDate.getHours().toString().padStart(2, '0');
-          const depMins = departureDate.getMinutes().toString().padStart(2, '0');
-          
-          setMorningBriefing(`Ton cours "${firstEvent.name}" est à ${firstEvent.time}.\nTrajet: ${Math.round(transitSeconds / 60)} min. Pars à ${depHours}:${depMins} !`);
         } catch (e) {
           console.error("Morning Briefing Error:", e);
         }
@@ -509,12 +548,11 @@ Fais court, punchy, et utilise des emojis !`;
           <Text style={styles.briefingIcon}>☀️</Text>
           <View style={{flex: 1}}>
             <Text style={styles.briefingText}>{morningBriefing}</Text>
-            {morningPolyline && (
+            {morningSegments.length > 0 && (
               <TouchableOpacity 
                 style={styles.showRouteBtn}
                 onPress={() => {
-                  setRouteMode('TRANSIT');
-                  setRouteCoordinates(decodePolyline(morningPolyline));
+                  setRouteSegments(morningSegments);
                 }}
               >
                 <Text style={styles.showRouteBtnText}>Voir le trajet 🗺️</Text>
@@ -556,14 +594,15 @@ Fais court, punchy, et utilise des emojis !`;
                 pinColor="#FF3B30"
               />
             ))}
-            {routeCoordinates.length > 0 && (
+            {routeSegments.map((seg, index) => (
               <Polyline 
-                coordinates={routeCoordinates}
-                strokeWidth={routeMode === 'TRANSIT' ? 6 : 4}
-                strokeColor={routeMode === 'TRANSIT' ? "#007AFF" : "#FF9500"}
-                lineDashPattern={routeMode === 'WALK' ? [10, 10] : []}
+                key={index}
+                coordinates={seg.points}
+                strokeWidth={seg.mode === 'TRANSIT' ? 6 : 4}
+                strokeColor={seg.color}
+                lineDashPattern={seg.mode === 'WALK' ? [10, 10] : []}
               />
-            )}
+            ))}
           </MapView>
         ) : (
           <Text style={styles.errorText}>Localisation indisponible.</Text>
