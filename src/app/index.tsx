@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator, ScrollView, Dimensions, TextInput, TouchableOpacity, Alert, Modal, Image } from 'react-native';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Slider from '@react-native-community/slider';
 import { useAgenda } from './AgendaContext';
 
@@ -22,7 +22,36 @@ export default function Dashboard() {
   const [aiModalVisible, setAiModalVisible] = useState(false);
   const [aiResponse, setAiResponse] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
   const { items } = useAgenda();
+  
+  // Decode encoded polyline from Google Routes API
+  const decodePolyline = (encoded: string) => {
+    let points = [];
+    let index = 0, len = encoded.length;
+    let lat = 0, lng = 0;
+    while (index < len) {
+      let b, shift = 0, result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      let dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lat += dlat;
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      let dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lng += dlng;
+      points.push({ latitude: (lat / 1E5), longitude: (lng / 1E5) });
+    }
+    return points;
+  };
   
   // Clé API Gemini (L'utilisateur a fourni cette clé, bien qu'elle ne commence pas par AIzaSy)
   const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
@@ -57,7 +86,7 @@ export default function Dashboard() {
           headers: {
             'Content-Type': 'application/json',
             'X-Goog-Api-Key': GOOGLE_API_KEY,
-            'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters'
+            'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'
           },
           body: JSON.stringify({
             origin: originBody,
@@ -95,6 +124,14 @@ export default function Dashboard() {
 
       let bestMode = walkTime <= transitTime ? "à pied 🚶" : "en transports 🚇";
       let bestTime = walkTime <= transitTime ? walkText : transitText;
+
+      let bestRouteData = walkTime <= transitTime ? walkData : transitData;
+      if (bestRouteData.routes && bestRouteData.routes.length > 0 && bestRouteData.routes[0].polyline) {
+        const encoded = bestRouteData.routes[0].polyline.encodedPolyline;
+        setRouteCoordinates(decodePolyline(encoded));
+      } else {
+        setRouteCoordinates([]);
+      }
 
       const todayEvents = items['2026-08-17'] || [];
       const nextEvent = todayEvents.length > 0 ? todayEvents[0] : null;
@@ -434,6 +471,13 @@ Fais court, punchy, et utilise des emojis !`;
                 pinColor="#FF3B30"
               />
             ))}
+            {routeCoordinates.length > 0 && (
+              <Polyline 
+                coordinates={routeCoordinates}
+                strokeWidth={5}
+                strokeColor="#007AFF"
+              />
+            )}
           </MapView>
         ) : (
           <Text style={styles.errorText}>Localisation indisponible.</Text>
