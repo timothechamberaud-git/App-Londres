@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [aiResponse, setAiResponse] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
+  const [routeMode, setRouteMode] = useState<'WALK' | 'TRANSIT'>('WALK');
   const { items } = useAgenda();
   
   // Decode encoded polyline from Google Routes API
@@ -122,10 +123,12 @@ export default function Dashboard() {
         walkText = `${Math.round(walkTime / 60)} min`;
       }
 
-      let bestMode = walkTime <= transitTime ? "à pied 🚶" : "en transports 🚇";
+      let bestModeText = walkTime <= transitTime ? "à pied 🚶" : "en transports 🚇";
       let bestTime = walkTime <= transitTime ? walkText : transitText;
 
       let bestRouteData = walkTime <= transitTime ? walkData : transitData;
+      setRouteMode(walkTime <= transitTime ? 'WALK' : 'TRANSIT');
+      
       if (bestRouteData.routes && bestRouteData.routes.length > 0 && bestRouteData.routes[0].polyline) {
         const encoded = bestRouteData.routes[0].polyline.encodedPolyline;
         setRouteCoordinates(decodePolyline(encoded));
@@ -167,12 +170,12 @@ Voici ma situation actuelle :
 - Je recherche une ambiance : ${vibe === 'secret' ? 'Lieu secret / local' : 'Touristique / populaire'}.
 - Le lieu que l'algorithme a trouvé pour moi est : ${destination.name} (${destination.type}).
 - Météo actuelle à Londres : ${weatherText}.
-- Temps de trajet estimé pour y aller : ${bestTime} ${bestMode}.
+- Temps de trajet estimé pour y aller : ${bestTime} ${bestModeText}.
 - Mon prochain impératif dans mon agenda est : ${nextEventText}.
 
 Ta mission :
 1. Donne-moi ton avis très court sur "${destination.name}" et pourquoi c'est un bon choix vu mon niveau de fatigue et mon budget.
-2. Dis-moi si le temps de trajet (${bestTime} ${bestMode}) est jouable avant mon prochain impératif.
+2. Dis-moi si le temps de trajet (${bestTime} ${bestModeText}) est jouable avant mon prochain impératif.
 3. Propose-moi concrètement ce que je vais pouvoir y faire et combien de temps je devrais y rester (en gardant à l'esprit mon prochain impératif).
 Fais court, punchy, et utilise des emojis !`;
 
@@ -475,7 +478,8 @@ Fais court, punchy, et utilise des emojis !`;
               <Polyline 
                 coordinates={routeCoordinates}
                 strokeWidth={5}
-                strokeColor="#007AFF"
+                strokeColor={routeMode === 'TRANSIT' ? "#007AFF" : "#34C759"}
+                lineDashPattern={routeMode === 'WALK' ? [10, 10] : undefined}
               />
             )}
           </MapView>
