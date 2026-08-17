@@ -181,7 +181,14 @@ export default function Dashboard() {
       }
 
       const todayEvents = items['2026-08-17'] || [];
-      const nextEvent = todayEvents.length > 0 ? todayEvents[0] : null;
+      const now = new Date();
+      const currentH = now.getHours();
+      const currentM = now.getMinutes();
+      const upcomingEvents = todayEvents.filter((event: any) => {
+        const [h, m] = event.time.split(':').map(Number);
+        return h > currentH || (h === currentH && m > currentM);
+      });
+      const nextEvent = upcomingEvents.length > 0 ? upcomingEvents[0] : null;
       let nextEventText = nextEvent ? `${nextEvent.time} - ${nextEvent.name}` : 'Aucun (quartier libre !)';
 
       setAiModalVisible(true);
@@ -296,8 +303,16 @@ Fais court, punchy, et utilise des emojis !`;
       // Pour la démo, on utilise 2026-08-16 si aujourd'hui est vide
       const eventsToday = items[today] || items['2026-08-16'] || [];
       
-      if (eventsToday.length > 0) {
-        const firstEvent = eventsToday[0];
+      const now = new Date();
+      const currentH = now.getHours();
+      const currentM = now.getMinutes();
+      const upcomingEvents = eventsToday.filter((event: any) => {
+        const [h, m] = event.time.split(':').map(Number);
+        return h > currentH || (h === currentH && m > currentM);
+      });
+      
+      if (upcomingEvents.length > 0) {
+        const firstEvent = upcomingEvents[0];
         const originBody = { location: { latLng: { latitude: location.coords.latitude, longitude: location.coords.longitude } } };
         // OMNES London Campus
         const destBody = { location: { latLng: { latitude: 51.518635, longitude: -0.152912 } } };
