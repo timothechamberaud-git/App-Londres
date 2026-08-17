@@ -24,6 +24,8 @@ export default function Dashboard() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
   const [routeMode, setRouteMode] = useState<'WALK' | 'TRANSIT'>('WALK');
+  const [morningBriefing, setMorningBriefing] = useState<string | null>(null);
+  const hasRunBriefing = React.useRef(false);
   const { items } = useAgenda();
   
   // Decode encoded polyline from Google Routes API
@@ -241,6 +243,59 @@ Fais court, punchy, et utilise des emojis !`;
     })();
   }, []);
 
+  // Morning Briefing Logic
+  useEffect(() => {
+    if (!location || Object.keys(items).length === 0 || hasRunBriefing.current) return;
+    
+    const generateMorningBriefing = async () => {
+      hasRunBriefing.current = true;
+      const today = new Date().toISOString().split('T')[0];
+      // Pour la démo, on utilise 2026-08-16 si aujourd'hui est vide
+      const eventsToday = items[today] || items['2026-08-16'] || [];
+      
+      if (eventsToday.length > 0) {
+        const firstEvent = eventsToday[0];
+        const originBody = { location: { latLng: { latitude: location.coords.latitude, longitude: location.coords.longitude } } };
+        // OMNES London Campus
+        const destBody = { location: { latLng: { latitude: 51.518635, longitude: -0.152912 } } };
+        
+        try {
+          const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': GOOGLE_API_KEY,
+              'X-Goog-FieldMask': 'routes.duration'
+            },
+            body: JSON.stringify({ origin: originBody, destination: destBody, travelMode: 'TRANSIT' })
+          });
+          const data = await res.json();
+          
+          let transitSeconds = 0;
+          if (data.routes && data.routes.length > 0 && data.routes[0].duration) {
+             transitSeconds = parseInt(data.routes[0].duration.replace('s', ''), 10);
+          }
+          
+          const totalSeconds = transitSeconds + 300; // + 5 min marge
+          
+          const [hours, minutes] = firstEvent.time.split(':').map(Number);
+          const eventDate = new Date();
+          eventDate.setHours(hours, minutes, 0, 0);
+          
+          const departureDate = new Date(eventDate.getTime() - totalSeconds * 1000);
+          const depHours = departureDate.getHours().toString().padStart(2, '0');
+          const depMins = departureDate.getMinutes().toString().padStart(2, '0');
+          
+          setMorningBriefing(`Ton cours "${firstEvent.name}" est à ${firstEvent.time}.\nTrajet: ${Math.round(transitSeconds / 60)} min. Pars à ${depHours}:${depMins} !`);
+        } catch (e) {
+          console.error("Morning Briefing Error:", e);
+        }
+      }
+    };
+
+    generateMorningBriefing();
+  }, [location, items]);
+
   // Fetch recommendations from Google Places API based on fatigue, battery, budget & vibe
   useEffect(() => {
     if (!location) return;
@@ -445,6 +500,16 @@ Fais court, punchy, et utilise des emojis !`;
         )}
       </View>
 
+      {morningBriefing && (
+        <View style={styles.briefingContainer}>
+          <Text style={styles.briefingIcon}>☀️</Text>
+          <Text style={styles.briefingText}>{morningBriefing}</Text>
+          <TouchableOpacity onPress={() => setMorningBriefing(null)} style={styles.closeBriefing}>
+            <Text style={styles.closeBriefingText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Map */}
       <View style={styles.mapContainer}>
         {location ? (
@@ -623,9 +688,40 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   batteryText: {
-    color: '#34C759', // Green for battery
+    color: '#8E8E93',
     fontSize: 14,
     fontWeight: '600',
+  },
+  briefingContainer: {
+    backgroundColor: 'rgba(255, 214, 10, 0.15)',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderColor: '#FFD60A',
+    borderWidth: 1,
+  },
+  briefingIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  briefingText: {
+    flex: 1,
+    color: '#FFD60A',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  closeBriefing: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  closeBriefingText: {
+    color: '#FFD60A',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   mapContainer: {
     height: height * 0.45,
