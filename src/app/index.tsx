@@ -26,6 +26,7 @@ export default function Dashboard() {
   const [routeMode, setRouteMode] = useState<'WALK' | 'TRANSIT'>('WALK');
   const [morningBriefing, setMorningBriefing] = useState<string | null>(null);
   const [morningSegments, setMorningSegments] = useState<any[]>([]);
+  const [hasCharger, setHasCharger] = useState<boolean>(true);
   const hasRunBriefing = React.useRef(false);
   const { items } = useAgenda();
   
@@ -211,6 +212,7 @@ Voici ma situation actuelle :
 - Je recherche une ambiance : ${vibe === 'secret' ? 'Lieu secret / local' : 'Touristique / populaire'}.
 - Le lieu que l'algorithme a trouvé pour moi est : ${destination.name} (${destination.type}).
 - Météo actuelle à Londres : ${weatherText}.
+- Mon téléphone est à ${batteryLevel !== null ? (batteryLevel * 100).toFixed(0) : 50}% de batterie. J'ai ${hasCharger ? 'un chargeur/batterie sur moi' : 'AUCUN chargeur, attention !'}.
 - Temps de trajet estimé pour y aller : ${bestTime} ${bestModeText}${transitInstructions}.
 - Mon prochain impératif dans mon agenda est : ${nextEventText}.
 
@@ -624,6 +626,18 @@ Fais court, punchy, et utilise des emojis !`;
           maximumTrackTintColor="#333333"
           thumbTintColor="#FF3B30"
         />
+
+        <View style={styles.modeContainer}>
+          <Text style={styles.sectionTitle}>Batterie Externe / Chargeur :</Text>
+          <View style={styles.toggleButtons}>
+            <TouchableOpacity style={[styles.toggleBtn, hasCharger && styles.toggleBtnActive]} onPress={() => setHasCharger(true)}>
+              <Text style={[styles.toggleBtnText, hasCharger && styles.toggleBtnTextActive]}>Oui 🔌</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.toggleBtn, !hasCharger && styles.toggleBtnActive]} onPress={() => setHasCharger(false)}>
+              <Text style={[styles.toggleBtnText, !hasCharger && styles.toggleBtnTextActive]}>Non ⚠️</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         <View style={styles.modeContainer}>
           <Text style={styles.sectionTitle}>Budget :</Text>
