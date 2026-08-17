@@ -449,6 +449,8 @@ Fais court, punchy, et utilise des emojis !`;
               const priceB = priceOrder[b.priceLevel] ?? 99;
               return priceA - priceB;
             });
+          }
+
           const formattedPlaces = results
             .filter((p: any) => p.location && p.location.latitude && p.location.longitude)
             .map((p: any) => {
