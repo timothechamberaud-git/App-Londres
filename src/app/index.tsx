@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
   const [routeMode, setRouteMode] = useState<'WALK' | 'TRANSIT'>('WALK');
   const [morningBriefing, setMorningBriefing] = useState<string | null>(null);
+  const [morningPolyline, setMorningPolyline] = useState<string | null>(null);
   const hasRunBriefing = React.useRef(false);
   const { items } = useAgenda();
   
@@ -265,7 +266,7 @@ Fais court, punchy, et utilise des emojis !`;
             headers: {
               'Content-Type': 'application/json',
               'X-Goog-Api-Key': GOOGLE_API_KEY,
-              'X-Goog-FieldMask': 'routes.duration'
+              'X-Goog-FieldMask': 'routes.duration,routes.polyline.encodedPolyline'
             },
             body: JSON.stringify({ origin: originBody, destination: destBody, travelMode: 'TRANSIT' })
           });
@@ -274,6 +275,9 @@ Fais court, punchy, et utilise des emojis !`;
           let transitSeconds = 0;
           if (data.routes && data.routes.length > 0 && data.routes[0].duration) {
              transitSeconds = parseInt(data.routes[0].duration.replace('s', ''), 10);
+             if (data.routes[0].polyline) {
+               setMorningPolyline(data.routes[0].polyline.encodedPolyline);
+             }
           }
           
           const totalSeconds = transitSeconds + 300; // + 5 min marge
@@ -503,7 +507,20 @@ Fais court, punchy, et utilise des emojis !`;
       {morningBriefing && (
         <View style={styles.briefingContainer}>
           <Text style={styles.briefingIcon}>☀️</Text>
-          <Text style={styles.briefingText}>{morningBriefing}</Text>
+          <View style={{flex: 1}}>
+            <Text style={styles.briefingText}>{morningBriefing}</Text>
+            {morningPolyline && (
+              <TouchableOpacity 
+                style={styles.showRouteBtn}
+                onPress={() => {
+                  setRouteMode('TRANSIT');
+                  setRouteCoordinates(decodePolyline(morningPolyline));
+                }}
+              >
+                <Text style={styles.showRouteBtnText}>Voir le trajet 🗺️</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <TouchableOpacity onPress={() => setMorningBriefing(null)} style={styles.closeBriefing}>
             <Text style={styles.closeBriefingText}>✕</Text>
           </TouchableOpacity>
@@ -708,11 +725,23 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   briefingText: {
-    flex: 1,
     color: '#FFD60A',
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 20,
+  },
+  showRouteBtn: {
+    marginTop: 8,
+    backgroundColor: 'rgba(255, 214, 10, 0.3)',
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  showRouteBtnText: {
+    color: '#FFD60A',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
   closeBriefing: {
     padding: 8,
