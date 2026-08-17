@@ -559,9 +559,9 @@ Fais court, punchy, et utilise des emojis !`;
             {routeCoordinates.length > 0 && (
               <Polyline 
                 coordinates={routeCoordinates}
-                strokeWidth={5}
-                strokeColor={routeMode === 'TRANSIT' ? "#007AFF" : "#34C759"}
-                lineDashPattern={routeMode === 'WALK' ? [10, 10] : undefined}
+                strokeWidth={routeMode === 'TRANSIT' ? 6 : 4}
+                strokeColor={routeMode === 'TRANSIT' ? "#007AFF" : "#FF9500"}
+                lineDashPattern={routeMode === 'WALK' ? [10, 10] : []}
               />
             )}
           </MapView>
