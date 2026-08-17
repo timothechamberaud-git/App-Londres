@@ -221,11 +221,11 @@ Fais court, punchy, et utilise des emojis !`;
 
       let loc = await Location.getCurrentPositionAsync({});
       
-      // FOR TESTING: Override location to OMNES Education London Campus
+      // FOR TESTING: Override location to Camden Town (London)
       setLocation({
         coords: {
-          latitude: 51.518635,
-          longitude: -0.152912,
+          latitude: 51.539011,
+          longitude: -0.142555,
           altitude: null,
           accuracy: null,
           altitudeAccuracy: null,
