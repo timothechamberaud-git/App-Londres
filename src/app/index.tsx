@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator, ScrollView, Dimensions, TextInput, TouchableOpacity, Alert, Modal } from 'react-native';
+import { StyleSheet, Text, View, ActivityIndicator, ScrollView, Dimensions, TextInput, TouchableOpacity, Alert, Modal, Image } from 'react-native';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -104,6 +104,23 @@ export default function Dashboard() {
       setIsAiLoading(true);
       setAiResponse("Ton pote IA réfléchit au meilleur plan pour toi... 🤔");
 
+      // Fetch Weather
+      let weatherText = "Météo inconnue";
+      try {
+        const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=51.5074&longitude=-0.1278&current_weather=true`);
+        const weatherData = await weatherRes.json();
+        if (weatherData && weatherData.current_weather) {
+          const code = weatherData.current_weather.weathercode;
+          const temp = weatherData.current_weather.temperature;
+          if (code <= 3) weatherText = `Plutôt clair / nuageux, ${temp}°C`;
+          else if (code >= 51 && code <= 67) weatherText = `Il pleut, ${temp}°C`;
+          else if (code >= 71 && code <= 77) weatherText = `Il neige, ${temp}°C`;
+          else weatherText = `Grisaille londonienne typique, ${temp}°C`;
+        }
+      } catch(e) {
+        console.error("Erreur Météo", e);
+      }
+
       // Call Gemini API
       const prompt = `Tu es mon pote étudiant de confiance à Londres. Parle-moi de manière familière, sympa et cool, comme un vrai pote.
 Voici ma situation actuelle :
@@ -112,6 +129,7 @@ Voici ma situation actuelle :
 - Mon budget : ${budget === 0 ? 'Gratuit' : budget === 1 ? 'Pas cher' : budget === 2 ? 'Moyen' : 'Plaisir'}.
 - Je recherche une ambiance : ${vibe === 'secret' ? 'Lieu secret / local' : 'Touristique / populaire'}.
 - Le lieu que l'algorithme a trouvé pour moi est : ${destination.name} (${destination.type}).
+- Météo actuelle à Londres : ${weatherText}.
 - Temps de trajet estimé pour y aller : ${bestTime} ${bestMode}.
 - Mon prochain impératif dans mon agenda est : ${nextEventText}.
 
@@ -247,7 +265,7 @@ Fais court, punchy, et utilise des emojis !`;
           headers: {
             'Content-Type': 'application/json',
             'X-Goog-Api-Key': GOOGLE_API_KEY,
-            'X-Goog-FieldMask': 'places.id,places.displayName,places.primaryType,places.priceLevel,places.location'
+            'X-Goog-FieldMask': 'places.id,places.displayName,places.primaryType,places.priceLevel,places.location,places.photos'
           },
           body: JSON.stringify(body)
         });
@@ -311,7 +329,8 @@ Fais court, punchy, et utilise des emojis !`;
                type: p.primaryType ? p.primaryType.replace(/_/g, ' ') : type,
                price: priceStr,
                lat: p.location?.latitude,
-               lon: p.location?.longitude
+               lon: p.location?.longitude,
+               photoName: p.photos && p.photos.length > 0 ? p.photos[0].name : null
              };
           });
           setPlaces(formattedPlaces.slice(0, 5));
@@ -347,6 +366,13 @@ Fais court, punchy, et utilise des emojis !`;
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>✨ Le Plan de ton Pote IA</Text>
+            
+            {places.length > 0 && places[0].photoName && (
+              <Image 
+                source={{ uri: `https://places.googleapis.com/v1/${places[0].photoName}/media?maxHeightPx=400&maxWidthPx=800&key=${GOOGLE_API_KEY}` }}
+                style={styles.placeImage}
+              />
+            )}
             
             <ScrollView style={styles.aiResponseContainer}>
               {isAiLoading ? (
@@ -720,6 +746,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  placeImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 16,
+    marginBottom: 16,
   },
   aiResponseContainer: {
     flex: 1,
