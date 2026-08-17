@@ -61,7 +61,9 @@ export default function Dashboard() {
   const parseRouteSegments = (routeData: any) => {
     let segments: any[] = [];
     let instructions: string[] = [];
-    if (!routeData.routes || routeData.routes.length === 0 || !routeData.routes[0].legs) return { segments, instructions };
+    if (!routeData.routes || routeData.routes.length === 0 || !routeData.routes[0].legs || routeData.routes[0].legs.length === 0) {
+      return { segments, instructions };
+    }
     
     const steps = routeData.routes[0].legs[0].steps || [];
     steps.forEach((step: any) => {
@@ -447,9 +449,9 @@ Fais court, punchy, et utilise des emojis !`;
               const priceB = priceOrder[b.priceLevel] ?? 99;
               return priceA - priceB;
             });
-          }
-
-          const formattedPlaces = results.map((p: any) => {
+          const formattedPlaces = results
+            .filter((p: any) => p.location && p.location.latitude && p.location.longitude)
+            .map((p: any) => {
              let priceStr = 'Prix inconnu';
              
              if (mode === 'culture') {
