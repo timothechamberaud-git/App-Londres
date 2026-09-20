@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator, ScrollView, Dimensions, TextInput, TouchableOpacity, Alert, Modal, Image } from 'react-native';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import Slider from '@react-native-community/slider';
 import { useAgenda } from './AgendaContext';
 
@@ -26,6 +26,8 @@ const CAMDEN_LOCATION: Location.LocationObject = {
 
 export default function Dashboard() {
   const [location, setLocation] = useState<Location.LocationObject>(CAMDEN_LOCATION);
+  const [isSimulatedLocation, setIsSimulatedLocation] = useState(true);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
   const [fatigue, setFatigue] = useState<number>(5); // 1 = Very energetic, 10 = Exhausted
   const [loading, setLoading] = useState(true);
@@ -42,7 +44,24 @@ export default function Dashboard() {
   const [morningSegments, setMorningSegments] = useState<any[]>([]);
   const [hasCharger, setHasCharger] = useState<boolean>(true);
   const hasRunBriefing = React.useRef(false);
+  const mapRef = React.useRef<MapView | null>(null);
   const { items } = useAgenda();
+
+  const handleSelectPlace = (place: any) => {
+    setSelectedPlaceId(place.id);
+    if (mapRef.current && place.lat && place.lon) {
+      try {
+        mapRef.current.animateToRegion({
+          latitude: place.lat,
+          longitude: place.lon,
+          latitudeDelta: 0.03,
+          longitudeDelta: 0.03,
+        }, 500);
+      } catch (e) {
+        // ignore if map not ready
+      }
+    }
+  };
   
   // Decode encoded polyline from Google Routes API
   const decodePolyline = (encoded: string) => {
@@ -122,7 +141,7 @@ export default function Dashboard() {
         return;
       }
       
-      const destination = places[0]; 
+      const destination = places.find(p => p.id === selectedPlaceId) || places[0]; 
       if (!destination || !destination.lat || !destination.lon) {
         Alert.alert("Erreur de Données", "Le lieu recommandé n'a pas de coordonnées valides.");
         return;
@@ -287,9 +306,11 @@ Fais court, punchy, et utilise des emojis !`;
           // Si l'utilisateur est physiquement à Londres, on prend son GPS réel
           if (loc && loc.coords.latitude >= 51.25 && loc.coords.latitude <= 51.72 && loc.coords.longitude >= -0.55 && loc.coords.longitude <= 0.35) {
             setLocation(loc);
+            setIsSimulatedLocation(false);
           } else {
             // Sinon (test en France ou simulateur), on reste ancré à Camden Town
             setLocation(CAMDEN_LOCATION);
+            setIsSimulatedLocation(true);
           }
         }
       } catch (e) {
@@ -506,9 +527,19 @@ Fais court, punchy, et utilise des emojis !`;
                photoName: p.photos && p.photos.length > 0 ? p.photos[0].name : null
              };
           });
-          setPlaces(formattedPlaces.slice(0, 5));
+          const topPlaces = formattedPlaces.slice(0, 5);
+          setPlaces(topPlaces);
+          if (topPlaces.length > 0) {
+            setSelectedPlaceId(prev => {
+              if (prev && topPlaces.some((p: any) => p.id === prev)) return prev;
+              return topPlaces[0].id;
+            });
+          } else {
+            setSelectedPlaceId(null);
+          }
         } else {
           setPlaces([]);
+          setSelectedPlaceId(null);
         }
       } catch (error) {
         console.error("Error fetching places:", error);
@@ -538,14 +569,20 @@ Fais court, punchy, et utilise des emojis !`;
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>✨ Le Plan de ton Pote IA</Text>
-            
-            {places.length > 0 && places[0].photoName && (
-              <Image 
-                source={{ uri: `https://places.googleapis.com/v1/${places[0].photoName}/media?maxHeightPx=400&maxWidthPx=800&key=${GOOGLE_API_KEY}` }}
-                style={styles.placeImage}
-              />
-            )}
+            {(() => {
+              const destination = places.find(p => p.id === selectedPlaceId) || places[0];
+              return (
+                <>
+                  <Text style={styles.modalTitle}>✨ Plan perso : {destination?.name || 'Sortie'}</Text>
+                  {destination && destination.photoName && (
+                    <Image 
+                      source={{ uri: `https://places.googleapis.com/v1/${destination.photoName}/media?maxHeightPx=400&maxWidthPx=800&key=${GOOGLE_API_KEY}` }}
+                      style={styles.placeImage}
+                    />
+                  )}
+                </>
+              );
+            })()}
             
             <ScrollView style={styles.aiResponseContainer}>
               {isAiLoading ? (
@@ -570,7 +607,12 @@ Fais court, punchy, et utilise des emojis !`;
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>🇬🇧 London Student Guide</Text>
+        <View>
+          <Text style={styles.title}>🇬🇧 London Student Guide</Text>
+          <Text style={styles.locationBadge}>
+            {isSimulatedLocation ? '📍 Camden Town (Base Démo)' : '📍 Londres (GPS actif)'}
+          </Text>
+        </View>
         {batteryLevel !== null && (
           <Text style={styles.batteryText}>
             🔋 Batterie: {(batteryLevel * 100).toFixed(0)}%
@@ -604,8 +646,8 @@ Fais court, punchy, et utilise des emojis !`;
       <View style={styles.mapContainer}>
         {location ? (
           <MapView 
-            style={styles.map}
-            provider={PROVIDER_GOOGLE}
+            ref={mapRef}
+            style={[styles.map, { flex: 1 }]}
             initialRegion={{
               latitude: location.coords.latitude,
               longitude: location.coords.longitude,
@@ -616,8 +658,8 @@ Fais court, punchy, et utilise des emojis !`;
           >
             <Marker 
               coordinate={{ latitude: location.coords.latitude, longitude: location.coords.longitude }}
-              title="Toi"
-              description="Ta position actuelle"
+              title={isSimulatedLocation ? "Base étudiante (Camden)" : "Toi"}
+              description={isSimulatedLocation ? "Position étudiante (Camden Town)" : "Ta position actuelle"}
               pinColor="#007AFF"
             />
             <Marker 
@@ -626,15 +668,19 @@ Fais court, punchy, et utilise des emojis !`;
               description="Campus de Londres (32 Aybrook St)"
               pinColor="#FFD60A"
             />
-            {places.map(place => (
-              <Marker
-                key={place.id}
-                coordinate={{ latitude: place.lat, longitude: place.lon }}
-                title={place.name}
-                description={`${place.type} - Prix: ${place.price}`}
-                pinColor="#FF3B30"
-              />
-            ))}
+            {places.map((place, idx) => {
+              const isSelected = selectedPlaceId ? place.id === selectedPlaceId : idx === 0;
+              return (
+                <Marker
+                  key={place.id}
+                  coordinate={{ latitude: place.lat, longitude: place.lon }}
+                  title={place.name}
+                  description={`${place.type} - Prix: ${place.price}`}
+                  pinColor={isSelected ? "#34C759" : "#FF3B30"}
+                  onPress={() => handleSelectPlace(place)}
+                />
+              );
+            })}
             {routeSegments.map((seg, index) => (
               <Polyline 
                 key={index}
@@ -730,12 +776,23 @@ Fais court, punchy, et utilise des emojis !`;
 
         <ScrollView style={styles.placesList} horizontal showsHorizontalScrollIndicator={false}>
           {places.length > 0 ? (
-            places.map(place => (
-              <View key={place.id} style={styles.placeCard}>
-                <Text style={styles.placeName}>{place.name}</Text>
-                <Text style={styles.placeInfo}>{place.type.toUpperCase()} • {place.price}</Text>
-              </View>
-            ))
+            places.map((place, idx) => {
+              const isSelected = selectedPlaceId ? place.id === selectedPlaceId : idx === 0;
+              return (
+                <TouchableOpacity 
+                  key={place.id} 
+                  style={[styles.placeCard, isSelected && styles.placeCardSelected]}
+                  onPress={() => handleSelectPlace(place)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.placeCardHeader}>
+                    <Text style={styles.placeName} numberOfLines={1}>{place.name}</Text>
+                    {isSelected && <Text style={styles.selectedBadge}>📍 Choisi</Text>}
+                  </View>
+                  <Text style={styles.placeInfo}>{place.type.toUpperCase()} • {place.price}</Text>
+                </TouchableOpacity>
+              );
+            })
           ) : (
             <Text style={styles.noPlacesText}>Aucun lieu trouvé pour ces filtres. Essaie d'augmenter le budget !</Text>
           )}
@@ -795,6 +852,12 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 20,
     fontWeight: '700',
+  },
+  locationBadge: {
+    color: '#8E8E93',
+    fontSize: 12,
+    marginTop: 3,
+    fontWeight: '500',
   },
   batteryText: {
     color: '#8E8E93',
@@ -913,20 +976,43 @@ const styles = StyleSheet.create({
   },
   placeCard: {
     backgroundColor: '#1C1C1E',
-    padding: 16,
+    padding: 14,
     borderRadius: 16,
     marginRight: 12,
-    minWidth: 160,
+    minWidth: 175,
     height: 100,
     justifyContent: 'center',
     borderLeftWidth: 4,
     borderLeftColor: '#FF3B30',
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  placeCardSelected: {
+    backgroundColor: '#242426',
+    borderLeftColor: '#34C759',
+    borderColor: '#34C759',
+  },
+  placeCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  selectedBadge: {
+    color: '#34C759',
+    fontSize: 10,
+    fontWeight: '700',
+    backgroundColor: 'rgba(52, 199, 89, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 6,
   },
   placeName: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    marginBottom: 4,
+    flex: 1,
   },
   placeInfo: {
     color: '#8E8E93',
