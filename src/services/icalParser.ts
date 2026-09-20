@@ -112,10 +112,17 @@ export function parseIcsToAgenda(rawIcs: string): AgendaItems {
     const description = getField('DESCRIPTION');
     const uid = getField('UID');
 
-    const startDate = parseIcalDate(dtstartStr);
-    if (!startDate) continue;
+    const rawStartDate = parseIcalDate(dtstartStr);
+    if (!rawStartDate) continue;
 
-    const endDate = parseIcalDate(dtendStr);
+    const rawEndDate = parseIcalDate(dtendStr);
+
+    // Compensation du décalage de fuseau horaire du serveur Index-Education (OMNES France) :
+    // Le serveur soustrait le fuseau français (UTC+2) au lieu du fuseau britannique (UTC+1).
+    // On ajoute +1 heure (+3600000 ms) pour afficher l'heure locale exacte des cours à Londres.
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const startDate = new Date(rawStartDate.getTime() + ONE_HOUR_MS);
+    const endDate = rawEndDate ? new Date(rawEndDate.getTime() + ONE_HOUR_MS) : null;
 
     const dateKey = formatDateLondon(startDate);
     const startTimeStr = formatTimeLondon(startDate);
