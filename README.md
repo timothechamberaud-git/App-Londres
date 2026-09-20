@@ -1,56 +1,62 @@
-# Welcome to your Expo app 👋
+# London Student Guide 🇬🇧🎓
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Application mobile et web conçue pour accompagner les étudiants à Londres : exploration des quartiers, recommandations personnalisées, gestion de budget, et **intégration intelligente de l'emploi du temps PronoteCampus / Hyperplanning**.
 
-## Get started
+---
 
-1. Install dependencies
+## 📅 Synchroniser son Emploi du Temps (PronoteCampus / Hyperplanning)
 
-   ```bash
-   npm install
-   ```
+L'application intègre un module d'agenda connecté capable de synchroniser automatiquement votre emploi du temps universitaire via flux **iCal / ICS**.
 
-2. Start the app
+> [!NOTE]
+> **Vie privée & Sécurité** : Aucun emploi du temps ni lien personnel n'est stocké dans le code source. Toutes vos données d'agenda restent strictement stockées en local sur votre appareil (`AsyncStorage`).
 
-   ```bash
-   npx expo start
-   ```
+### Comment connecter votre emploi du temps :
+1. Ouvrez l'application et rendez-vous dans l'onglet **Agenda**.
+2. Cliquez sur le badge en haut à droite **"Lier Pronote"**.
+3. Récupérez votre lien iCal personnel :
+   * Connectez-vous à votre espace étudiant **PronoteCampus** ou **Hyperplanning** sur votre navigateur Web.
+   * Allez dans **Emploi du temps** (ou cliquez sur votre profil).
+   * Cliquez sur l'icône de calendrier 📅 **"Synchroniser avec son agenda personnel"** (ou *Exporter au format iCal*).
+   * Copiez l'adresse URL fournie (commençant par `https://...` ou `webcal://...`).
+4. Collez l'URL dans l'application et appuyez sur **"🔄 Synchroniser l'emploi du temps"**.
+5. Vos cours apparaissent automatiquement avec la salle, l'enseignant et les horaires au fuseau horaire de Londres (`Europe/London`).
 
-In the output, you'll find options to open the app in a
+### 🎯 Détection intelligente des séances obligatoires vs facultatives
+L'application analyse le contenu de votre emploi du temps et classe automatiquement chaque activité :
+* **Cours académiques obligatoires** : identifiés avec un badge bleu `[Obligatoire]`.
+* **Séances non-obligatoires** : identifiées avec un badge violet `[Facultatif]` précisant la nature de la séance :
+  * *Permanence libre* : les **Office Hours** des enseignants (créneaux de questions libres).
+  * *Activité libre* : sessions de sport, yoga ou tournois sur inscription libre.
+  * *Club* : activités associatives et clubs étudiants (théâtre, etc.).
+  * *Soutien* : ateliers méthodologiques et soutien en anglais.
+  * *Événement* : sorties, excursions et salons étudiants.
+* **Filtres rapides** : basculez en un clic entre `Tous`, `🎯 Obligatoires` et `💡 Facultatifs` pour voir immédiatement les cours où votre présence est requise.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## 🚀 Démarrage rapide
 
-## Get a fresh project
-
-When you're ready, run:
-
+### 1. Installation des dépendances
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 2. Lancement du serveur de développement
+```bash
+# Version Web
+npm run web
 
-### Other setup steps
+# ou pour iOS / Android via Expo Go
+npx expo start
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+---
 
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 🛠️ Technologies
+- **Framework** : [Expo](https://expo.dev) / React Native (Expo Router)
+- **Langage** : TypeScript
+- **Calendrier** : `react-native-calendars`
+- **Stockage local** : `@react-native-async-storage/async-storage`
+- **Cartographie** : `react-native-maps`
+- **Réseau / iCal** : Parseur RFC 5545 personnalisé avec gestion des fuseaux horaires (`Intl.DateTimeFormat`)

@@ -1,5 +1,4 @@
-import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { Tabs } from 'expo-router';
+import { Tabs, DarkTheme, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AgendaProvider } from './AgendaContext';
 

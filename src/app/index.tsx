@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator, ScrollView, Dimensions, TextInput, TouchableOpacity, Alert, Modal, Image } from 'react-native';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import Slider from '@react-native-community/slider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAgenda } from './AgendaContext';
 
 const { width, height } = Dimensions.get('window');
@@ -27,8 +28,31 @@ export default function Dashboard() {
   const [morningBriefing, setMorningBriefing] = useState<string | null>(null);
   const [morningSegments, setMorningSegments] = useState<any[]>([]);
   const [hasCharger, setHasCharger] = useState<boolean>(true);
+  const [feedbacks, setFeedbacks] = useState<Record<string, 'like' | 'dislike'>>({});
   const hasRunBriefing = React.useRef(false);
   const { items } = useAgenda();
+
+  useEffect(() => {
+    const loadFeedbacks = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('place_feedbacks');
+        if (stored) setFeedbacks(JSON.parse(stored));
+      } catch (e) {
+        console.error("Erreur de chargement des feedbacks", e);
+      }
+    };
+    loadFeedbacks();
+  }, []);
+
+  const saveFeedback = async (placeId: string, type: 'like' | 'dislike') => {
+    try {
+      const newFeedbacks = { ...feedbacks, [placeId]: type };
+      setFeedbacks(newFeedbacks);
+      await AsyncStorage.setItem('place_feedbacks', JSON.stringify(newFeedbacks));
+    } catch (e) {
+      console.error("Erreur de sauvegarde du feedback", e);
+    }
+  };
   
   // Decode encoded polyline from Google Routes API
   const decodePolyline = (encoded: string) => {
@@ -213,6 +237,11 @@ export default function Dashboard() {
       }
 
       // Call Gemini API
+      const destinationFeedback = feedbacks[destination.id];
+      const feedbackText = destinationFeedback 
+        ? `Note importante : J'ai déjà visité ce lieu et j'ai dit que je l'avais ${destinationFeedback === 'like' ? 'aimé 👍' : 'détesté 👎'}. Prends en compte ce feedback dans ta recommandation !`
+        : `Je n'ai pas encore donné d'avis sur ce lieu.`;
+
       const prompt = `Tu es mon pote étudiant de confiance à Londres. Parle-moi de manière familière, sympa et cool, comme un vrai pote.
 Voici ma situation actuelle :
 - Je suis à Londres et j'ai besoin d'un plan pour ma prochaine sortie.
@@ -224,6 +253,7 @@ Voici ma situation actuelle :
 - Mon téléphone est à ${batteryLevel !== null ? (batteryLevel * 100).toFixed(0) : 50}% de batterie. J'ai ${hasCharger ? 'un chargeur/batterie sur moi' : 'AUCUN chargeur, attention !'}.
 - Temps de trajet estimé pour y aller : ${bestTime} ${bestModeText}${transitInstructions}.
 - Mon prochain impératif dans mon agenda est : ${nextEventText}.
+- ${feedbackText}
 
 Ta mission :
 1. Donne-moi ton avis très court sur "${destination.name}" et pourquoi c'est un bon choix vu mon niveau de fatigue et mon budget.
@@ -269,21 +299,12 @@ Fais court, punchy, et utilise des emojis !`;
         return;
       }
 
-      let loc = await Location.getCurrentPositionAsync({});
+      let loc = await Location.getLastKnownPositionAsync({});
+      if (!loc) {
+        loc = await Location.getCurrentPositionAsync({});
+      }
       
-      // FOR TESTING: Override location to Camden Town (London)
-      setLocation({
-        coords: {
-          latitude: 51.539011,
-          longitude: -0.142555,
-          altitude: null,
-          accuracy: null,
-          altitudeAccuracy: null,
-          heading: null,
-          speed: null
-        },
-        timestamp: Date.now()
-      });
+      setLocation(loc);
 
       // Get Battery
       const level = await Battery.getBatteryLevelAsync();
@@ -540,7 +561,28 @@ Fais court, punchy, et utilise des emojis !`;
                   <Text style={styles.aiLoadingText}>{aiResponse}</Text>
                 </View>
               ) : (
-                <Text style={styles.aiResponseText}>{aiResponse}</Text>
+                <>
+                  <Text style={styles.aiResponseText}>{aiResponse}</Text>
+                  {places.length > 0 && (
+                    <View style={styles.feedbackContainer}>
+                      <Text style={styles.feedbackTitle}>As-tu aimé cet endroit ?</Text>
+                      <View style={styles.feedbackButtons}>
+                        <TouchableOpacity 
+                          style={[styles.feedbackBtn, feedbacks[places[0].id] === 'like' && styles.feedbackBtnActiveLike]}
+                          onPress={() => saveFeedback(places[0].id, 'like')}
+                        >
+                          <Text style={styles.feedbackBtnText}>👍 J'ai kiffé</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[styles.feedbackBtn, feedbacks[places[0].id] === 'dislike' && styles.feedbackBtnActiveDislike]}
+                          onPress={() => saveFeedback(places[0].id, 'dislike')}
+                        >
+                          <Text style={styles.feedbackBtnText}>👎 Bof</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </>
               )}
             </ScrollView>
 
@@ -590,8 +632,7 @@ Fais court, punchy, et utilise des emojis !`;
       <View style={styles.mapContainer}>
         {location ? (
           <MapView 
-            style={styles.map}
-            provider={PROVIDER_GOOGLE}
+            style={[styles.map, { flex: 1 }]}
             initialRegion={{
               latitude: location.coords.latitude,
               longitude: location.coords.longitude,
@@ -605,6 +646,12 @@ Fais court, punchy, et utilise des emojis !`;
               title="Toi"
               description="Ta position actuelle"
               pinColor="#007AFF"
+            />
+            <Marker 
+              coordinate={{ latitude: 51.518635, longitude: -0.152912 }}
+              title="🏫 OMNES Education"
+              description="Campus de Londres (32 Aybrook St)"
+              pinColor="#FFD60A"
             />
             {places.map(place => (
               <Marker
@@ -830,7 +877,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#111',
   },
   map: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   controlsContainer: {
     flex: 1,
@@ -1032,6 +1079,44 @@ const styles = StyleSheet.create({
   closeModalBtnText: {
     color: '#FFF',
     fontSize: 18,
+    fontWeight: 'bold',
+  },
+  feedbackContainer: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    alignItems: 'center',
+  },
+  feedbackTitle: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  feedbackButtons: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  feedbackBtn: {
+    backgroundColor: '#1C1C1E',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  feedbackBtnActiveLike: {
+    backgroundColor: 'rgba(52, 199, 89, 0.2)',
+    borderColor: '#34C759',
+  },
+  feedbackBtnActiveDislike: {
+    backgroundColor: 'rgba(255, 59, 48, 0.2)',
+    borderColor: '#FF3B30',
+  },
+  feedbackBtnText: {
+    color: '#FFF',
+    fontSize: 14,
     fontWeight: 'bold',
   }
 });
