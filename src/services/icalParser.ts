@@ -219,38 +219,75 @@ export function parseIcsToAgenda(rawIcs: string): AgendaItems {
 }
 
 /**
- * Télécharge le contenu d'une URL iCal en gérant les protocoles webcal:// et proxies CORS si nécessaire
+ * Valide qu'une URL est sécurisée (HTTPS obligatoire, pas de protocole arbitraire, pas d'IP locale/privée)
  */
-export async function fetchIcalFeed(url: string): Promise<string> {
-  let targetUrl = url.trim();
-  if (targetUrl.startsWith('webcal://')) {
-    targetUrl = 'https://' + targetUrl.slice(9);
-  } else if (targetUrl.startsWith('http://')) {
-    targetUrl = 'https://' + targetUrl.slice(7);
+export function validateSecureUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+
+  // Autoriser et normaliser webcal:// vers https://
+  let normalized = trimmed;
+  if (normalized.startsWith('webcal://')) {
+    normalized = 'https://' + normalized.slice(9);
   }
 
-  // Sur plateforme Web, le navigateur bloque les requêtes cross-origin si le serveur Pronote n'autorise pas CORS.
-  // Sur mobile natif (iOS / Android), fetch() n'a pas de restriction CORS.
-  if (Platform.OS === 'web') {
-    try {
-      const res = await fetch(targetUrl);
-      if (res.ok) {
-        return await res.text();
-      }
-    } catch {
-      // Fallback avec proxy CORS pour l'environnement Web
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-      const proxyRes = await fetch(proxyUrl);
-      if (!proxyRes.ok) {
-        throw new Error(`Impossible de récupérer le calendrier (statut ${proxyRes.status})`);
-      }
-      return await proxyRes.text();
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error("L'URL fournie est invalide.");
+  }
+
+  // Refuser formellement tout protocole non sécurisé ou arbitraire (http, file, javascript, data, etc.)
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Pour des raisons de sécurité, seules les connexions sécurisées HTTPS sont autorisées.');
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // Bloquer les tentatives SSRF (Server-Side Request Forgery) et l'accès au réseau local ou aux métadonnées cloud
+  const privateHostPatterns = [
+    /^localhost$/,
+    /^127\./,
+    /^0\.0\.0\.0$/,
+    /^10\./,
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+    /^192\.168\./,
+    /^169\.254\./, // AWS / GCP / Azure metadata endpoint
+    /^\[::1\]$/,
+    /\.local$/,
+    /\.internal$/,
+  ];
+
+  for (const pattern of privateHostPatterns) {
+    if (pattern.test(hostname)) {
+      throw new Error('Accès interdit : les adresses locales ou privées sont bloquées par mesure de sécurité.');
     }
   }
 
-  const response = await fetch(targetUrl);
-  if (!response.ok) {
-    throw new Error(`Erreur lors du téléchargement de l'emploi du temps (statut ${response.status})`);
+  return parsed.toString();
+}
+
+/**
+ * Télécharge le contenu d'une URL iCal en toute sécurité
+ */
+export async function fetchIcalFeed(url: string): Promise<string> {
+  const targetUrl = validateSecureUrl(url);
+
+  try {
+    const response = await fetch(targetUrl);
+    if (!response.ok) {
+      throw new Error(`Erreur lors du téléchargement de l'emploi du temps (statut ${response.status})`);
+    }
+    return await response.text();
+  } catch (err: any) {
+    // Si l'environnement Web bloque la requête à cause des restrictions CORS du serveur scolaire
+    if (Platform.OS === 'web') {
+      throw new Error(
+        "Impossible de charger l'URL directement depuis un navigateur web (restriction CORS du serveur Pronote/Hyperplanning). " +
+        "Pour protéger la confidentialité de votre jeton, aucun proxy tiers public n'est utilisé. " +
+        "Veuillez coller le contenu .ics directement ci-dessous ou utiliser l'application mobile."
+      );
+    }
+    throw err;
   }
-  return await response.text();
 }
