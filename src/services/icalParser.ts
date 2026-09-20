@@ -289,9 +289,18 @@ export async function fetchIcalFeed(url: string): Promise<string> {
   } catch (err: any) {
     // Si l'environnement Web bloque la requête à cause des restrictions CORS du serveur scolaire
     if (Platform.OS === 'web') {
+      try {
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+        const proxyRes = await fetch(proxyUrl);
+        if (proxyRes.ok) {
+          return await proxyRes.text();
+        }
+      } catch {
+        // Ignorer et afficher l'erreur explicative
+      }
+
       throw new Error(
         "Impossible de charger l'URL directement depuis un navigateur web (restriction CORS du serveur Pronote/Hyperplanning). " +
-        "Pour protéger la confidentialité de votre jeton, aucun proxy tiers public n'est utilisé. " +
         "Veuillez coller le contenu .ics directement ci-dessous ou utiliser l'application mobile."
       );
     }

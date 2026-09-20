@@ -100,6 +100,28 @@ export function AgendaProvider({ children }: { children: ReactNode }) {
         let parsedItems: AgendaItems = {};
         if (jsonValue != null) {
           parsedItems = JSON.parse(jsonValue);
+
+          // Migration automatique immédiate : recaler tous les cours Pronote déjà en cache de +1 heure
+          const offsetApplied = await AsyncStorage.getItem('@agenda_tz_offset_v2');
+          if (offsetApplied !== 'true') {
+            const shiftedItems: AgendaItems = {};
+            for (const [date, eventList] of Object.entries(parsedItems)) {
+              shiftedItems[date] = eventList.map(event => {
+                if (event.source === 'pronote') {
+                  const newTime = event.time.replace(/(\d{1,2}):(\d{2})/g, (_, h, m) => {
+                    const newH = (parseInt(h, 10) + 1) % 24;
+                    return `${String(newH).padStart(2, '0')}:${m}`;
+                  });
+                  return { ...event, time: newTime };
+                }
+                return event;
+              });
+            }
+            parsedItems = shiftedItems;
+            await AsyncStorage.setItem('@agenda_items', JSON.stringify(shiftedItems));
+            await AsyncStorage.setItem('@agenda_tz_offset_v2', 'true');
+          }
+
           setItems(parsedItems);
         }
 
