@@ -63,6 +63,13 @@ export default function Dashboard() {
     }
   };
   
+  // Calcul de la distance à vol d'oiseau en mètres
+  const getDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const dLat = (lat2 - lat1) * 111000;
+    const dLon = (lon2 - lon1) * 69000;
+    return Math.round(Math.sqrt(dLat * dLat + dLon * dLon));
+  };
+  
   // Decode encoded polyline from Google Routes API
   const decodePolyline = (encoded: string) => {
     let points = [];
@@ -253,7 +260,7 @@ Voici ma situation actuelle :
 - Ma jauge de fatigue est de ${fatigue}/10 (1=en pleine forme, 10=épuisé).
 - Mon budget : ${budget === 0 ? 'Gratuit' : budget === 1 ? 'Pas cher' : budget === 2 ? 'Moyen' : 'Plaisir'}.
 - Je recherche une ambiance : ${vibe === 'secret' ? 'Lieu secret / local' : 'Touristique / populaire'}.
-- Le lieu que l'algorithme a trouvé pour moi est : ${destination.name} (${destination.type}).
+- Le lieu que l'algorithme a trouvé pour moi est : ${destination.name} (${destination.type})${destination.distanceStr ? ` (distance : ${destination.distanceStr})` : ''}.
 - Météo actuelle à Londres : ${weatherText}.
 - Mon téléphone est à ${batteryLevel !== null ? (batteryLevel * 100).toFixed(0) : 50}% de batterie. J'ai ${hasCharger ? 'un chargeur/batterie sur moi' : 'AUCUN chargeur, attention !'}.
 - Temps de trajet estimé pour y aller : ${bestTime} ${bestModeText}${transitInstructions}.
@@ -420,7 +427,14 @@ Fais court, punchy, et utilise des emojis !`;
           }
         }
 
-        const radius = (batteryLevel !== null && batteryLevel < 0.2) ? 1000.0 : 3000.0;
+        // Rayon dynamique inversé par rapport à la fatigue :
+        // Plus on est fatigué, plus le rayon est court !
+        // Fatigue 10 (épuisé) -> rayon ~600m (tout près)
+        // Fatigue 1 (en forme) -> rayon ~3500m (exploration)
+        let radius = Math.round(3500 - (fatigue - 1) * 320);
+        if (batteryLevel !== null && batteryLevel < 0.2) {
+          radius = Math.min(radius, 1000.0);
+        }
         
         const url = `https://places.googleapis.com/v1/places:searchText`;
         
@@ -434,8 +448,15 @@ Fais court, punchy, et utilise des emojis !`;
 
         let queryModifier = budget === 0 ? 'free ' : '';
 
+        // Si fatigué, ambiance reposante / cosy
+        let searchKeyword = keyword;
+        if (fatigue > 7 && mode === 'chill') {
+          searchKeyword = 'cozy quiet';
+        }
+        const textQuery = `${queryModifier}${type} ${searchKeyword}`.trim();
+
         const body: any = {
-          textQuery: `${queryModifier}${type} ${keyword} London`,
+          textQuery,
           locationBias: {
             circle: {
               center: {
@@ -445,7 +466,7 @@ Fais court, punchy, et utilise des emojis !`;
               radius: radius
             }
           },
-          maxResultCount: 5
+          maxResultCount: 10
         };
 
         if (priceLevels.length > 0) {
@@ -478,55 +499,78 @@ Fais court, punchy, et utilise des emojis !`;
         }
 
         if (data.places && data.places.length > 0) {
-          
           let results = data.places;
           // Si budget 0 et chill, on garde que les trucs vraiment pas chers car FREE n'est pas envoyé par Google
           if (mode === 'chill' && budget === 0) {
             results = results.filter((p: any) => p.priceLevel === 'PRICE_LEVEL_FREE' || p.priceLevel === 'PRICE_LEVEL_INEXPENSIVE' || !p.priceLevel);
           }
 
-          // Tri par prix (uniquement possible pour les Sorties car les musées n'ont pas de niveau de prix sur Google)
-          if (mode === 'chill') {
-            const priceOrder: any = {
-              'PRICE_LEVEL_FREE': 0,
-              'PRICE_LEVEL_INEXPENSIVE': 1,
-              'PRICE_LEVEL_MODERATE': 2,
-              'PRICE_LEVEL_EXPENSIVE': 3,
-              'PRICE_LEVEL_VERY_EXPENSIVE': 4
-            };
-            results.sort((a: any, b: any) => {
-              const priceA = priceOrder[a.priceLevel] ?? 99;
-              const priceB = priceOrder[b.priceLevel] ?? 99;
-              return priceA - priceB;
-            });
-          }
-
-          const formattedPlaces = results
+          // Calculer la distance de chaque lieu par rapport à l'utilisateur
+          const withDist = results
             .filter((p: any) => p.location && p.location.latitude && p.location.longitude)
             .map((p: any) => {
-             let priceStr = 'Prix inconnu';
-             
-             if (mode === 'culture') {
-                priceStr = budget === 0 ? 'Gratuit' : 'Billets / Payant';
-             } else {
-               if (p.priceLevel === 'PRICE_LEVEL_FREE') priceStr = 'Gratuit';
-               else if (p.priceLevel === 'PRICE_LEVEL_INEXPENSIVE') priceStr = '£';
-               else if (p.priceLevel === 'PRICE_LEVEL_MODERATE') priceStr = '££';
-               else if (p.priceLevel === 'PRICE_LEVEL_EXPENSIVE') priceStr = '£££';
-               else if (p.priceLevel === 'PRICE_LEVEL_VERY_EXPENSIVE') priceStr = '££££';
-               else priceStr = budget === 0 ? 'Gratuit' : 'Prix inconnu';
-             }
-             
-             return {
-               id: p.id,
-               name: p.displayName?.text || 'Lieu',
-               type: p.primaryType ? p.primaryType.replace(/_/g, ' ') : type,
-               price: priceStr,
-               lat: p.location?.latitude,
-               lon: p.location?.longitude,
-               photoName: p.photos && p.photos.length > 0 ? p.photos[0].name : null
-             };
+              const dist = getDistanceMeters(
+                location.coords.latitude,
+                location.coords.longitude,
+                p.location.latitude,
+                p.location.longitude
+              );
+              return { ...p, _dist: dist };
+            });
+
+          const priceOrder: any = {
+            'PRICE_LEVEL_FREE': 0,
+            'PRICE_LEVEL_INEXPENSIVE': 1,
+            'PRICE_LEVEL_MODERATE': 2,
+            'PRICE_LEVEL_EXPENSIVE': 3,
+            'PRICE_LEVEL_VERY_EXPENSIVE': 4
+          };
+
+          // Tri intelligent :
+          // Si fatigue >= 5 : tri STRICT par distance croissante (les plus proches d'abord !)
+          // Si fatigue < 5 : en forme, tri par niveau de prix puis distance
+          withDist.sort((a: any, b: any) => {
+            if (fatigue >= 5) {
+              return a._dist - b._dist;
+            } else {
+              if (mode === 'chill') {
+                const priceA = priceOrder[a.priceLevel] ?? 99;
+                const priceB = priceOrder[b.priceLevel] ?? 99;
+                if (priceA !== priceB) return priceA - priceB;
+              }
+              return a._dist - b._dist;
+            }
           });
+
+          const formattedPlaces = withDist.map((p: any) => {
+            let priceStr = 'Prix inconnu';
+            
+            if (mode === 'culture') {
+              priceStr = budget === 0 ? 'Gratuit' : 'Billets / Payant';
+            } else {
+              if (p.priceLevel === 'PRICE_LEVEL_FREE') priceStr = 'Gratuit';
+              else if (p.priceLevel === 'PRICE_LEVEL_INEXPENSIVE') priceStr = '£';
+              else if (p.priceLevel === 'PRICE_LEVEL_MODERATE') priceStr = '££';
+              else if (p.priceLevel === 'PRICE_LEVEL_EXPENSIVE') priceStr = '£££';
+              else if (p.priceLevel === 'PRICE_LEVEL_VERY_EXPENSIVE') priceStr = '££££';
+              else priceStr = budget === 0 ? 'Gratuit' : 'Prix inconnu';
+            }
+            
+            const distStr = p._dist < 1000 ? `${p._dist} m` : `${(p._dist / 1000).toFixed(1)} km`;
+
+            return {
+              id: p.id,
+              name: p.displayName?.text || 'Lieu',
+              type: p.primaryType ? p.primaryType.replace(/_/g, ' ') : type,
+              price: priceStr,
+              distance: p._dist,
+              distanceStr: distStr,
+              lat: p.location?.latitude,
+              lon: p.location?.longitude,
+              photoName: p.photos && p.photos.length > 0 ? p.photos[0].name : null
+            };
+          });
+
           const topPlaces = formattedPlaces.slice(0, 5);
           setPlaces(topPlaces);
           if (topPlaces.length > 0) {
@@ -675,7 +719,7 @@ Fais court, punchy, et utilise des emojis !`;
                   key={place.id}
                   coordinate={{ latitude: place.lat, longitude: place.lon }}
                   title={place.name}
-                  description={`${place.type} - Prix: ${place.price}`}
+                  description={`${place.type} - Prix: ${place.price}${place.distanceStr ? ` • 🚶 ${place.distanceStr}` : ''}`}
                   pinColor={isSelected ? "#34C759" : "#FF3B30"}
                   onPress={() => handleSelectPlace(place)}
                 />
@@ -699,7 +743,9 @@ Fais court, punchy, et utilise des emojis !`;
       {/* Controls & Recommendations */}
       <View style={styles.controlsContainer}>
         <Text style={styles.sectionTitle}>Comment te sens-tu ?</Text>
-        <Text style={styles.sliderValue}>Fatigue : {fatigue}/10 (1=En forme, 10=Épuisé)</Text>
+        <Text style={styles.sliderValue}>
+          Fatigue : {fatigue}/10 • {fatigue >= 8 ? '😴 Épuisé (Ultra proche < 700m)' : fatigue >= 5 ? '🚶 Fatigué (Proche < 1.8km)' : '⚡ En forme (Grand Londres < 3.5km)'}
+        </Text>
         <Slider
           style={styles.slider}
           minimumValue={1}
@@ -790,6 +836,9 @@ Fais court, punchy, et utilise des emojis !`;
                     {isSelected && <Text style={styles.selectedBadge}>📍 Choisi</Text>}
                   </View>
                   <Text style={styles.placeInfo}>{place.type.toUpperCase()} • {place.price}</Text>
+                  {place.distanceStr && (
+                    <Text style={styles.placeDistance}>🚶 à {place.distanceStr}</Text>
+                  )}
                 </TouchableOpacity>
               );
             })
@@ -980,7 +1029,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginRight: 12,
     minWidth: 175,
-    height: 100,
+    minHeight: 105,
     justifyContent: 'center',
     borderLeftWidth: 4,
     borderLeftColor: '#FF3B30',
@@ -1018,6 +1067,12 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontSize: 12,
     fontWeight: '600',
+  },
+  placeDistance: {
+    color: '#34C759',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
   },
   noPlacesText: {
     color: '#8E8E93',
